@@ -1,0 +1,4 @@
+.env
+.github-reviewer/
+__pycache__/
+*.pyc

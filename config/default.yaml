@@ -1,0 +1,69 @@
+review:
+  base_ref: origin/main
+  head_ref: HEAD
+  max_diff_bytes: 200000
+  max_file_bytes: 60000
+  max_test_output_bytes: 30000
+  max_changed_files: 500
+  max_grep_matches: 80
+  max_findings: 30
+  max_context_lines: 20
+  max_agent_turns: 6
+  allow_test_commands: false
+  test_command_allowlist:
+    - pytest
+    - npm test
+    - pnpm test
+    - go test ./...
+
+agents:
+  reviewer:
+    model: deepseek_pro
+    use_repo_tools: false
+  verifier:
+    model: deepseek_pro
+    use_repo_tools: false
+  summarizer:
+    model: deepseek_flash
+
+models:
+  deepseek_pro:
+    provider: openai_compatible
+    name: deepseek-v4-pro
+    base_url: https://api.deepseek.com
+    api_key_env: DEEPSEEK_API_KEY
+    supports_structured_output: false
+    settings:
+      temperature: 0.1
+      extra_body:
+        thinking:
+          type: disabled
+
+  deepseek_flash:
+    provider: openai_compatible
+    name: deepseek-v4-flash
+    base_url: https://api.deepseek.com
+    api_key_env: DEEPSEEK_API_KEY
+    supports_structured_output: false
+    settings:
+      temperature: 0.1
+
+# Optional agents run only when their path globs match changed files.
+# specialists:
+#   security:
+#     enabled: true
+#     model: reviewer
+#     paths: ["src/auth/**", "src/api/**"]
+
+persistence:
+  enabled: false
+  sqlite_path: .github-reviewer/reviews.sqlite3
+  config_version: v1
+
+github:
+  enabled: false
+  webhook_secret_env: GITHUB_WEBHOOK_SECRET
+  token_env: GITHUB_TOKEN
+
+observability:
+  enable_agent_tracing: true
