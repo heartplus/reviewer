@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import Path
 
 from github_reviewer.review.models import ReviewReport, ReviewRunMetadata, ReviewStage
+from github_reviewer.observability import redact
 
 
 class SQLiteReviewStore:
@@ -27,7 +28,7 @@ class SQLiteReviewStore:
                 """,
                 (
                     metadata.run_id,
-                    str(request.repo),
+                    redact(str(request.repo)),
                     request.source,
                     request.pull_request_number,
                     request.base,
@@ -53,7 +54,7 @@ class SQLiteReviewStore:
         with self._connect() as conn:
             conn.execute(
                 "UPDATE review_runs SET status = 'completed', completed_at = ?, final_output = ? WHERE run_id = ?",
-                (report.metadata.completed_at.isoformat() if report.metadata.completed_at else None, report.final_output, report.metadata.run_id),
+                (report.metadata.completed_at.isoformat() if report.metadata.completed_at else None, redact(report.final_output), report.metadata.run_id),
             )
             conn.execute("DELETE FROM findings WHERE run_id = ?", (report.metadata.run_id,))
             conn.executemany(
@@ -69,15 +70,15 @@ class SQLiteReviewStore:
                         finding.id,
                         finding.severity,
                         finding.status,
-                        finding.file,
+                        redact(finding.file),
                         finding.line_start,
                         finding.line_end,
-                        finding.title,
-                        finding.evidence,
-                        finding.trigger,
-                        finding.impact,
-                        finding.suggested_fix,
-                        finding.verifier_reason,
+                        redact(finding.title),
+                        redact(finding.evidence),
+                        redact(finding.trigger),
+                        redact(finding.impact),
+                        redact(finding.suggested_fix) if finding.suggested_fix else None,
+                        redact(finding.verifier_reason) if finding.verifier_reason else None,
                         finding.source_agent,
                     )
                     for finding in report.findings

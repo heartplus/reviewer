@@ -1,10 +1,11 @@
-# GitHub App 与 PR 评论发布详细设计
+# GitHub App 与 PR 评论发布详细设计（不在当前目标内）
 
 ## 1. 目标
 
 将审查核心接入 GitHub Pull Request 生命周期：接收可信 webhook、准备特定提交的工作区、运行审查，并以幂等方式发布汇总评论和可定位的 inline comment。
 
-本功能属于规划阶段；它必须复用现有 `ReviewRunner`，不在 webhook handler 中实现审查逻辑。
+本功能不属于当前“本地 Git 历史审查工具”目标，也不纳入实现验收。本文仅保留为未来
+扩展参考；当前版本不要求 webhook、远程 checkout、GitHub App 认证或评论发布。
 
 ## 2. 事件范围与流程
 
@@ -57,4 +58,3 @@ GitHub App 权限遵循最小化：Pull requests 读写、Contents 只读、Meta
 - 用 GitHub API mock 验证 checkout SHA 与评论幂等。
 - 验证无法定位的 finding 只进入汇总评论。
 - 验证发布失败后保留持久化结果且可以重试。
-

@@ -1,6 +1,6 @@
-# GitHub Reviewer
+# Local Git Reviewer
 
-An agentic code review framework for GitHub pull requests.
+An agentic code review framework for local Git changes and commit history.
 
 The project follows the design from the reference conversation:
 
@@ -115,7 +115,7 @@ models:
 ## Current Shape
 
 ```text
-GitHub PR / local branch
+Local Git range / commit history
         |
         v
 ReviewRunner
@@ -153,11 +153,11 @@ only when a model needs more repository exploration for larger changes.
 Set `agents.<role>.use_repo_tools: false` for models that should review the supplied diff
 without tool exploration; the default configuration uses this mode for DeepSeek Pro.
 
-## Optional Integrations
+## Optional Extensions
 
-Set `persistence.enabled: true` to retain runs, stages, findings, and a comment outbox
-in SQLite. GitHub integration is provided as a webhook/workflow adapter: it verifies
-`pull_request` deliveries, checks out the exact base/head SHAs in a temporary workspace,
-then can publish idempotent summary and inline comments when `github.enabled` is set.
+Set `persistence.enabled: true` to retain local runs, stages, and findings in SQLite.
+Remote code-hosting integration is outside the current product scope.
 
-Detailed component contracts are in [docs/detailed_design](docs/detailed_design/README.md).
+运行命令、配置和排查方法见[本地 Git 代码审查使用手册](docs/usage_guide.md)。
+当前目标的完成情况与后续工作见[本地 Git 审查目标缺口清单](docs/local_review_gap_analysis.md)。
+详细组件契约见[详细设计索引](docs/detailed_design/README.md)。

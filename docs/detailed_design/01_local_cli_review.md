@@ -4,7 +4,10 @@
 
 提供一个无需 GitHub 服务端依赖的本地入口，对指定仓库的 `base...head` 变更执行完整代码审查，并将最终 Markdown 报告输出到标准输出。
 
-该入口用于开发调试、CI 验证和后续 GitHub 集成前的本地能力验证。
+该入口用于开发调试、CI 验证和本地历史变更检查。
+
+除范围审查外，还提供逐提交历史审查：按提交顺序审查 `base..head` 中的每个
+commit，且始终从 Git 对象读取当时的文件内容，不切换或修改工作区。
 
 ## 2. 命令接口
 
@@ -17,6 +20,14 @@ github-reviewer review \
   --show-intermediate
 ```
 
+```bash
+github-reviewer history \
+  --repo /path/to/repository \
+  --head HEAD \
+  --all \
+  --limit 20
+```
+
 | 参数 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- |
 | `--repo` | 是 | 无 | 目标 Git 工作区的绝对或相对路径。 |
@@ -24,6 +35,13 @@ github-reviewer review \
 | `--head` | 否 | 配置中的 `review.head_ref` | 被审查的目标 ref。 |
 | `--config` | 否 | `config/default.yaml` | YAML 配置文件路径。 |
 | `--show-intermediate` | 否 | `false` | 在最终报告前输出 Reviewer 和 Verifier 原始结果。 |
+
+`history` 命令使用相同的 `--repo`、`--base`、`--head` 和 `--config` 参数，另提供
+`--limit`（默认 `20`，范围 `1-200`）限制最多审查的提交数。`base` 本身不被审查，
+范围语义等价于 `git rev-list --reverse base..head`。
+
+指定 `--all` 时，忽略 `--base` 并审查 `head` 可达的全部提交，包括根提交；根提交以
+空 Git tree 作为比较基线。
 
 命令退出码：`0` 表示审查完成；`2` 表示命令参数或配置错误；`3` 表示仓库准备失败；`4` 表示模型运行失败；`5` 表示内部未预期错误。
 
@@ -38,6 +56,10 @@ CLI 参数
   -> 输出最终 Markdown
   -> 映射退出码
 ```
+
+`history` 的流程为：先解析固定的提交列表，再依次以每个提交的父提交作为 base、该
+提交作为 head 调用相同的 `ReviewRunner`。这保证审查对象是单个提交的实际改动，且
+不受当前工作区未提交文件影响。
 
 1. `cli.py` 解析参数，不在 CLI 中读取模型环境变量。
 2. 使用 `load_config()` 读取 YAML，并在配置校验前展开环境变量。
@@ -74,4 +96,3 @@ CLI 参数
 - 对空 diff 验证不会创建模型调用。
 - 对不存在的仓库、无效 ref、无效 YAML 和缺失模型映射分别验证可读错误信息。
 - 对 `--show-intermediate` 验证中间输出仅在显式开启时出现。
-

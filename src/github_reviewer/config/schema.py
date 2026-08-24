@@ -81,6 +81,9 @@ class ReviewConfig(StrictModel):
     max_agent_turns: int = 6
     allow_test_commands: bool = False
     test_command_allowlist: list[str] = Field(default_factory=list)
+    provider_retry_max_attempts: int = Field(default=3, ge=1, le=10)
+    provider_retry_base_delay_seconds: float = Field(default=0.5, gt=0, le=60)
+    provider_retry_max_delay_seconds: float = Field(default=8.0, gt=0, le=300)
 
     @field_validator(
         "max_diff_bytes",
@@ -97,6 +100,12 @@ class ReviewConfig(StrictModel):
         if value <= 0:
             raise ValueError("resource limits must be positive")
         return value
+
+    @model_validator(mode="after")
+    def validate_retry_delays(self) -> "ReviewConfig":
+        if self.provider_retry_max_delay_seconds < self.provider_retry_base_delay_seconds:
+            raise ValueError("provider_retry_max_delay_seconds must be at least provider_retry_base_delay_seconds")
+        return self
 
 
 class PersistenceConfig(StrictModel):

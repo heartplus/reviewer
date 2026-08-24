@@ -2,7 +2,8 @@
 
 ## 1. 背景
 
-本项目用于构建一个面向 GitHub Pull Request 的代码审查专用 Agent 框架。
+本项目用于构建一个面向本地 Git 仓库的代码审查专用 Agent 框架。它以 Git ref
+范围或 Git 历史范围为输入，对已经存在于本地的代码变更执行审查。
 
 整体设计把两类职责分开：
 
@@ -13,25 +14,26 @@
 
 ## 2. 设计目标
 
-- 审查 Pull Request 中的代码变更，并输出简洁、可验证、有证据支撑的审查意见。
+- 审查本地 Git 仓库中的代码变更，并输出简洁、可验证、有证据支撑的审查意见。
 - 重点关注正确性、安全风险、数据丢失、并发问题、API 契约退化和用户可见行为变化。
 - 避免输出纯风格类意见和缺少依据的猜测。
 - 支持不同 Agent 角色使用不同模型。
 - 模型选择必须通过 YAML 配置完成，避免在 Agent 代码中硬编码模型名称。
-- 同时支持本地仓库审查，以及未来的 GitHub webhook 集成。
+- 支持一次审查一个 `base...head` 范围，以及逐提交审查 `base..head` 历史范围。
 
 ## 3. 非目标
 
 - 不替代人工代码审查的最终批准。
 - 不构建通用自主编码 Agent。
 - 默认不运行任意 shell 命令。
-- 第一版框架不直接向 GitHub 发布评论。
+- 不接收 webhook、不克隆远程仓库，也不向 GitHub 或其他代码托管平台发布评论。
+- 不要求部署服务、任务队列或数据库；审查结果默认直接输出到终端。
 - 不从零实现一套自定义 Agent runtime。
 
 ## 4. 总体架构
 
 ```text
-GitHub PR / 本地分支
+本地 Git 仓库 / Git 历史范围
         |
         v
 Review Request
@@ -79,6 +81,16 @@ ReviewReport
 github-reviewer review --repo /path/to/repo --base origin/main --head HEAD
 ```
 
+逐提交审查给定历史范围：
+
+```bash
+github-reviewer history --repo /path/to/repo --head HEAD --all --limit 20
+```
+
+`review` 将整个 `base...head` 视为一项变更；`history` 则按时间顺序审查
+`base..head` 中的每个提交，并分别输出报告；`history --all` 还会包含根提交。两种模式
+都通过 Git 对象读取历史内容，不会 checkout 或修改目标工作区。
+
 ## 6. Agent 角色设计
 
 ### 6.1 Reviewer Agent
@@ -123,14 +135,14 @@ Verifier Agent 可以使用不同于 Reviewer Agent 的模型。这样可以降�
 
 职责：
 
-- 生成最终 Pull Request 审查意见。
+- 生成最终本地审查报告。
 - 保留已确认的问题。
 - 移除被驳回或置信度不足的问题。
 - 保持输出简洁、明确、可执行。
 
 期望输出：
 
-- 可直接作为 PR comment 使用的 Markdown。
+- 可直接保存、贴入变更说明或用于人工审查的 Markdown。
 - 如果没有高置信度问题，要明确说明。
 - 在有必要时补充残余风险或测试缺口。
 
@@ -221,9 +233,6 @@ src/github_reviewer/
   tools/
     repo.py          仓库检查和命令执行工具。
 
-  github/
-    events.py        GitHub Pull Request 事件结构。
-
   review/
     service.py       ReviewRunner 运行时工厂。
 
@@ -256,7 +265,7 @@ src/github_reviewer/
 
 ## 11. 安全与控制
 
-框架必须把仓库内容、diff、PR 描述和评论都视为不可信输入。
+框架必须把仓库内容、diff、提交信息和文件名都视为不可信输入。
 
 关键控制点：
 
@@ -265,14 +274,6 @@ src/github_reviewer/
 - 默认关闭 shell 命令执行。
 - 启用 shell 执行时，只允许 allowlist 中的命令。
 - 最终输出应避免泄露代码中可能出现的 secret。
-- GitHub 评论发布应由独立集成层处理，并受权限模型控制。
-
-未来 GitHub 评论发布能力应满足：
-
-- 幂等；
-- 绑定 commit SHA；
-- 可配置关闭；
-- 可以追踪已发布评论 ID。
 
 ## 12. 错误处理
 
@@ -311,27 +312,7 @@ Agent 执行过程应使用 OpenAI Agents SDK tracing 进行观测。
 
 ## 14. 后续扩展方向
 
-### 14.1 GitHub App 集成
-
-增加 Pull Request webhook 处理能力：
-
-```text
-GitHub Webhook
-      |
-      v
-Webhook Handler
-      |
-      v
-Checkout / Fetch PR
-      |
-      v
-ReviewRunner
-      |
-      v
-GitHub Review Comment
-```
-
-### 14.2 审查结果持久化
+### 14.1 可选的本地审查结果持久化
 
 保存每次审查运行，便于审计和评估。
 
@@ -342,9 +323,9 @@ GitHub Review Comment
 - model config version；
 - intermediate outputs；
 - final output；
-- posted comment ID。
+- 执行命令与退出状态。
 
-### 14.3 专项 Review Agent
+### 14.2 专项 Review Agent
 
 后续可以增加可选的领域 Agent：
 
@@ -356,7 +337,7 @@ GitHub Review Comment
 
 这些专项 Agent 的输出可以继续进入同一套 Verifier 和 Summarizer 阶段。
 
-### 14.4 结构化输出
+### 14.3 结构化输出
 
 后续可以把自由格式 Markdown 问题升级为结构化 finding object。
 
@@ -374,7 +355,7 @@ GitHub Review Comment
 }
 ```
 
-结构化输出可以更好地支持 GitHub inline comment、质量统计和回归评估。
+结构化输出可以更好地支持质量统计和回归评估。
 
 ## 15. 初始里程碑
 
@@ -382,6 +363,6 @@ GitHub Review Comment
 2. 支持按 Agent 角色配置模型。
 3. 提供安全的仓库工具层。
 4. 增加配置加载和路径安全基础测试。
-5. 增加 GitHub App webhook 和 PR checkout。
-6. 支持结构化 finding 和 inline comment。
-7. 建立评估数据集，用于衡量误报和漏报。
+5. 支持逐提交审查 Git 历史范围，且不修改工作区。
+6. 支持结构化 finding 和确定性 Markdown 报告。
+7. 建立本地 fixture 与评估数据集，用于衡量误报和漏报。

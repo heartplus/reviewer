@@ -10,6 +10,9 @@ review:
   max_context_lines: 20
   max_agent_turns: 6
   allow_test_commands: false
+  provider_retry_max_attempts: 3
+  provider_retry_base_delay_seconds: 0.5
+  provider_retry_max_delay_seconds: 8.0
   test_command_allowlist:
     - pytest
     - npm test

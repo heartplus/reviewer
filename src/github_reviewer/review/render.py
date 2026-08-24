@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from github_reviewer.review.models import FindingStatus, ReviewFinding, Severity, SummaryResult
+from github_reviewer.observability import redact
 
 _SEVERITY_ORDER = {
     Severity.CRITICAL: 0,
@@ -17,12 +18,10 @@ def render_markdown(findings: list[ReviewFinding], summary: SummaryResult | None
         key=lambda item: (_SEVERITY_ORDER[item.severity], item.file, item.line_start, item.title),
     )
     parts = ["## Code Review"]
-    if summary and summary.summary:
-        parts.extend(["", summary.summary.strip()])
     if not confirmed:
         parts.extend(["", "No high-confidence issues were found in this change."])
     else:
-        parts.extend(["", "### Confirmed findings"])
+        parts.extend(["", f"{len(confirmed)} high-confidence issue(s) were found.", "", "### Confirmed findings"])
         for finding in confirmed:
             location = f"{finding.file}:{finding.line_start}"
             if finding.line_end and finding.line_end != finding.line_start:
@@ -30,20 +29,19 @@ def render_markdown(findings: list[ReviewFinding], summary: SummaryResult | None
             parts.extend(
                 [
                     "",
-                    f"#### [{finding.severity}] `{location}` {finding.title}",
+                    f"#### [{finding.severity}] `{redact(location)}` {redact(finding.title)}",
                     "",
-                    f"**Impact:** {finding.impact}",
+                    f"**Impact:** {redact(finding.impact)}",
                     "",
-                    f"**Evidence:** {finding.evidence}",
+                    f"**Evidence:** {redact(finding.evidence)}",
                     "",
-                    f"**Trigger:** {finding.trigger}",
+                    f"**Trigger:** {redact(finding.trigger)}",
                 ]
             )
             if finding.suggested_fix:
-                parts.extend(["", f"**Suggested fix:** {finding.suggested_fix}"])
+                parts.extend(["", f"**Suggested fix:** {redact(finding.suggested_fix)}"])
     if summary and summary.residual_risks:
-        parts.extend(["", "### Residual risks", *[f"- {risk}" for risk in summary.residual_risks]])
+        parts.extend(["", "### Residual risks", *[f"- {redact(risk)}" for risk in summary.residual_risks]])
     if summary and summary.test_gaps:
-        parts.extend(["", "### Test gaps", *[f"- {gap}" for gap in summary.test_gaps]])
+        parts.extend(["", "### Test gaps", *[f"- {redact(gap)}" for gap in summary.test_gaps]])
     return "\n".join(parts).strip() + "\n"
-

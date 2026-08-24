@@ -111,6 +111,7 @@ class ReviewRunMetadata(ReviewModel):
     completed_at: datetime | None = None
     diff_truncated: bool = False
     tool_failures: list[str] = Field(default_factory=list)
+    provider_retries: int = 0
     stages: list[ReviewStage] = Field(default_factory=list)
 
 
@@ -121,4 +122,3 @@ class ReviewReport(ReviewModel):
     findings: list[ReviewFinding] = Field(default_factory=list)
     final_output: str = ""
     metadata: ReviewRunMetadata = Field(default_factory=ReviewRunMetadata)
-

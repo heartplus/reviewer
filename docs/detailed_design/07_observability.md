@@ -49,6 +49,5 @@ review.run
 ## 6. 测试与验收
 
 - 使用 in-memory exporter 验证完整 trace 树、阶段属性和运行 ID 关联。
-- 验证日志中不存在 API Key、GitHub token 和模拟 secret。
+- 验证日志中不存在 API Key 和模拟 secret。
 - 验证工具超时、provider 重试和降级路径都产生可检索事件。
-

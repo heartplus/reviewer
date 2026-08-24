@@ -28,9 +28,19 @@ def test_renderer_only_shows_confirmed_findings() -> None:
 
     assert rendered.count("Missing authorization check") == 1
     assert "Cross-tenant data" in rendered
+    assert "Reviewed authorization changes." not in rendered
 
 
 def test_renderer_states_empty_result_without_claiming_safety() -> None:
     rendered = render_markdown([_finding(FindingStatus.NEEDS_EVIDENCE)])
 
     assert "No high-confidence issues" in rendered
+
+
+def test_renderer_redacts_secret_like_finding_text() -> None:
+    finding = _finding(FindingStatus.CONFIRMED).model_copy(update={"evidence": "token=sk-abcdefghijklmnopqrstuvwxyz"})
+
+    rendered = render_markdown([finding])
+
+    assert "sk-abcdefghijklmnopqrstuvwxyz" not in rendered
+    assert "[REDACTED]" in rendered

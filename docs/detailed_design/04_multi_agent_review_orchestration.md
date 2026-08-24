@@ -43,7 +43,7 @@ Summarizer 指令必须强调：简洁、可执行、无夸张；不重新发明
 ## 5. 故障降级
 
 - Reviewer 失败：本次审查失败，不产生可能误导使用者的最终结论。
-- Verifier 失败：默认不发布 Reviewer 原始 finding；CLI 可以通过显式 `--allow-unverified-output` 作为实验性开关输出，并标记“未验证”。
+- Verifier 失败：本次审查以模型错误结束，绝不输出 Reviewer 原始 finding，避免未验证结论被误用。
 - Summarizer 失败：由确定性的本地渲染器依据已确认结构化 finding 生成 Markdown。
 - 单个工具调用失败：将错误反馈给当前 Agent；若仍能完成任务，保留部分结果并在报告中标示上下文缺口。
 

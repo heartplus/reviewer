@@ -61,8 +61,8 @@ def _build_repo_tools(config: AppConfig, repo_tools: RepositoryTools):
         return repo_tools.get_diff(base_ref, head_ref, context_lines=context_lines)
 
     @function_tool
-    def changed_files(base_ref: str, head_ref: str = "HEAD") -> list[str]:
-        """Return repository-relative files changed between base_ref and head_ref."""
+    def changed_files(base_ref: str, head_ref: str = "HEAD") -> list[dict[str, str]]:
+        """Return bounded changed-file status and repository-relative paths."""
         return repo_tools.changed_files(base_ref, head_ref)
 
     @function_tool
@@ -83,8 +83,8 @@ def _build_repo_tools(config: AppConfig, repo_tools: RepositoryTools):
     repo_function_tools = [get_diff, changed_files, read_file, grep, git_blame]
     if config.review.allow_test_commands:
         @function_tool
-        def run_tests(command: str, timeout_seconds: int = 120) -> str:
-            """Run one configured allowlisted test command in the repository."""
+        def run_tests(command: str, timeout_seconds: int = 120) -> dict[str, object]:
+            """Run one configured allowlisted test command and return its bounded result."""
             return repo_tools.run_tests(command, timeout_seconds=timeout_seconds)
 
         repo_function_tools.append(run_tests)

@@ -2,7 +2,7 @@
 
 ## 1. 目标
 
-保存审查运行与 finding 生命周期，支撑审计、GitHub 评论幂等、模型效果评估和故障重试。
+保存本地审查运行与 finding 生命周期，支撑审计、模型效果评估和故障排查。
 
 本功能属于规划阶段。初版建议使用关系型数据库；对象存储可用于保存经过脱敏的较大原始文本。
 
@@ -13,19 +13,15 @@
 | `review_runs` | `run_id` | repo、PR、base/head SHA、配置版本、状态、时间、最终报告。 |
 | `review_stages` | `run_id + stage` | 实际模型、provider、耗时、token、状态、错误摘要。 |
 | `findings` | `finding_id + run_id` | 文件、行号、severity、状态、证据、建议、Verifier 原因。 |
-| `published_comments` | `comment_id` | GitHub comment ID、run ID、finding ID、commit SHA、发布状态。 |
-| `review_jobs` | `job_id` | 幂等键、任务状态、重试次数、下次执行时间。 |
 
-`review_runs` 的唯一约束为 `(repository, pull_request_number, head_sha, config_version)`；是否允许同一提交因配置版本不同重新审查由部署策略决定。
+`review_runs` 的唯一约束建议为 `(repository, base_ref, head_ref, config_version)`；是否允许同一范围因配置版本不同重新审查由本地使用策略决定。
 
 ## 3. 写入时机
 
-1. 任务接受后创建 `review_jobs`，记录幂等键。
-2. 审查开始时创建 `review_runs(status=running)`。
-3. 每个 Agent 阶段完成后 upsert `review_stages`。
-4. Verifier 完成后写入结构化 findings。
-5. 最终渲染完成后更新 `review_runs(status=completed)`。
-6. 评论发布后写入或更新 `published_comments`。
+1. 审查开始时创建 `review_runs(status=running)`。
+2. 每个 Agent 阶段完成后 upsert `review_stages`。
+3. Verifier 完成后写入结构化 findings。
+4. 最终渲染完成后更新 `review_runs(status=completed)`。
 
 发生不可恢复错误时将 run 标为 `failed`，保留已完成阶段和安全错误摘要。不能用“失败”覆盖已有成功 run。
 
@@ -37,14 +33,10 @@
 
 ## 5. 一致性与重试
 
-评论发布采用 outbox 模式：在同一事务中写入待发布记录，异步 worker 调用 GitHub API。这样即使进程在审查完成后崩溃，也能恢复发布。
-
-重试必须依据稳定幂等键与 GitHub 隐藏标记去重。数据库操作使用事务；finding 和对应的评论记录应能追溯到同一个 `run_id`。
+数据库操作使用事务；阶段、finding 和最终报告应能追溯到同一个 `run_id`。若未来增加远程发布功能，应将其设计为独立 outbox，不影响本地审查的完成语义。
 
 ## 6. 测试与验收
 
-- 验证相同 PR/head/config 重复投递只产生一个活跃 run。
+- 验证相同仓库、范围和配置版本的重复执行符合本地去重策略。
 - 验证阶段失败不会丢失已写入的元数据。
-- 验证 outbox 在进程重启后能恢复发布。
 - 验证仓库级数据删除、脱敏和访问控制策略。
-

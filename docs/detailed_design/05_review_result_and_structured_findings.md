@@ -2,7 +2,7 @@
 
 ## 1. 目标
 
-定义稳定的运行输入、内部 finding 和最终报告模型，使本地 CLI、GitHub 评论、持久化和评估使用同一份语义数据，而不是解析自由格式 Markdown。
+定义稳定的运行输入、内部 finding 和最终报告模型，使本地 CLI、可选持久化和评估使用同一份语义数据，而不是解析自由格式 Markdown。
 
 ## 2. 数据模型
 
@@ -11,7 +11,7 @@ RuntimeReviewRequest
   repo: Path
   base: str
   head: str
-  source: local | github
+  source: local
   pull_request_number: int | null
   commit_sha: str | null
 
@@ -59,13 +59,13 @@ Reviewer 生成的每项 finding 首先为 `candidate`。Verifier 对每项设�
 
 ## 4. 标识与定位
 
-`id` 由稳定字段生成，例如 `SHA-256(file + line_start + title)` 的短前缀。相同提交的重复运行应生成相同 ID，支持 GitHub 评论幂等和统计去重。
+`id` 由稳定字段生成，例如 `SHA-256(file + line_start + title)` 的短前缀。相同提交的重复运行应生成相同 ID，支持本地结果去重和统计。
 
-`file` 必须是仓库根目录相对路径。行号必须落在 `head` 版本中；若无法可靠定位，finding 可保留在汇总报告但不能创建 inline comment。
+`file` 必须是仓库根目录相对路径。行号必须落在 `head` 版本中；若无法可靠定位，应作为残余风险或测试缺口表达，不能伪装成可定位 finding。
 
 ## 5. Markdown 渲染
 
-最终 Markdown 由 `ReviewReport.findings` 确定性渲染，模型只负责措辞建议，避免结构信息丢失。排序规则为 severity、文件路径、行号。
+最终 Markdown 由 `ReviewReport.findings` 确定性渲染；模型摘要不直接进入最终结论，避免其措辞与结构化裁定矛盾。排序规则为 severity、文件路径、行号。
 
 每项 confirmed finding 使用固定模板：
 
@@ -91,4 +91,3 @@ Reviewer 生成的每项 finding 首先为 `candidate`。Verifier 对每项设�
 - 验证相同 finding 的 ID 稳定，变化文件或行号后 ID 改变。
 - 验证渲染器不输出 rejected/needs_evidence finding。
 - 验证无 finding、截断 diff 和定位失败的 Markdown 输出。
-

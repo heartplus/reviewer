@@ -7,8 +7,9 @@ from types import SimpleNamespace
 
 import pytest
 
+import github_reviewer.agents.runner as runner_module
 from github_reviewer.agents.runner import Runner
-from github_reviewer.agents.runner import _extract_json_object
+from github_reviewer.agents.runner import _extract_json_object, _is_retryable_provider_error
 from github_reviewer.config.schema import AppConfig, RuntimeReviewRequest
 from github_reviewer.review import create_review_runner
 from github_reviewer.review.models import ReviewerResult, SummaryResult, VerifierResult
@@ -96,3 +97,68 @@ def test_runner_skips_models_for_empty_diff(tmp_path: Path, monkeypatch: pytest.
 
 def test_extract_json_object_accepts_markdown_fence() -> None:
     assert _extract_json_object("```json\n{\"summary\": \"ok\"}\n```") == '{"summary": "ok"}'
+
+
+def test_runner_retries_transient_provider_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    base, head = _committed_repository(tmp_path)
+    config = _config().model_copy(
+        update={"review": _config().review.model_copy(update={"provider_retry_max_attempts": 2, "provider_retry_base_delay_seconds": 0.001, "provider_retry_max_delay_seconds": 0.001})}
+    )
+    responses = iter(
+        [
+            ReviewerResult.model_validate({"findings": []}),
+            SummaryResult.model_validate({"summary": "No findings."}),
+        ]
+    )
+    attempts = 0
+
+    async def fake_run(*args, **kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("temporary network failure")
+        return SimpleNamespace(final_output=next(responses))
+
+    async def no_sleep(delay: float) -> None:
+        assert delay > 0
+
+    monkeypatch.setattr(Runner, "run", fake_run)
+    monkeypatch.setattr(runner_module.asyncio, "sleep", no_sleep)
+    runner = create_review_runner(config, tmp_path)
+
+    report = asyncio.run(runner.review(RuntimeReviewRequest(repo=tmp_path, base=base, head=head)))
+
+    assert attempts == 3
+    assert report.metadata.provider_retries == 1
+
+
+def test_runner_does_not_retry_credential_errors() -> None:
+    assert _is_retryable_provider_error(RuntimeError("Missing credentials for provider")) is False
+
+
+def test_runner_retries_invalid_compatible_model_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    base, head = _committed_repository(tmp_path)
+    config = _config().model_copy(
+        update={"review": _config().review.model_copy(update={"provider_retry_max_attempts": 2, "provider_retry_base_delay_seconds": 0.001, "provider_retry_max_delay_seconds": 0.001})}
+    )
+    responses = iter(
+        [
+            SimpleNamespace(final_output="not valid JSON"),
+            SimpleNamespace(final_output=ReviewerResult.model_validate({"findings": []})),
+            SimpleNamespace(final_output=SummaryResult.model_validate({"summary": "No findings."})),
+        ]
+    )
+
+    async def fake_run(*args, **kwargs):
+        return next(responses)
+
+    async def no_sleep(delay: float) -> None:
+        assert delay > 0
+
+    monkeypatch.setattr(Runner, "run", fake_run)
+    monkeypatch.setattr(runner_module.asyncio, "sleep", no_sleep)
+    runner = create_review_runner(config, tmp_path)
+
+    report = asyncio.run(runner.review(RuntimeReviewRequest(repo=tmp_path, base=base, head=head)))
+
+    assert report.metadata.provider_retries == 1

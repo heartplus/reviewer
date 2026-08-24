@@ -46,7 +46,7 @@ models:
 - `ModelSettingsConfig`：`temperature`、`max_tokens`、`reasoning_effort` 等模型参数。
 - `ModelConfig`：`provider`、`name`、`base_url`、`api_key_env`、`supports_structured_output`、`settings`。
 - `AgentConfig`：单个角色引用的逻辑模型名，以及是否暴露仓库工具的 `use_repo_tools` 开关。
-- `ReviewConfig`：工具输出上限、默认 refs、测试命令 allowlist。
+- `ReviewConfig`：工具输出上限、默认 refs、测试命令 allowlist、Provider 重试次数与退避参数。
 - `AppConfig`：顶层聚合配置，并提供 `model_for_agent(role)` 查询方法。
 
 `provider` 仅允许 `openai`、`openai_compatible` 和 `litellm`。配置中未知字段应默认拒绝，避免拼写错误被静默忽略。

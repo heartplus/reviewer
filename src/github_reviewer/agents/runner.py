@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import random
 import time
 from contextlib import nullcontext
 from datetime import UTC, datetime
@@ -12,7 +13,7 @@ from agents import RunConfig, Runner, trace
 from github_reviewer.agents.builder import ReviewAgents
 from github_reviewer.config.schema import AppConfig, RuntimeReviewRequest
 from github_reviewer.errors import ProviderError
-from github_reviewer.observability import ReviewObserver
+from github_reviewer.observability import ReviewObserver, redact
 from github_reviewer.persistence.sqlite_store import SQLiteReviewStore
 from github_reviewer.review.models import (
     FindingStatus,
@@ -47,6 +48,7 @@ class ReviewRunner:
             raise ValueError("Review request repository does not match the runner repository")
         metadata = ReviewRunMetadata()
         observer = ReviewObserver(metadata.run_id)
+        self._repo_tools.set_observer(observer, metadata.tool_failures)
         observer.event("review.started", base=request.base, head=request.head, source=request.source)
         if self._store:
             self._store.start_run(request, metadata)
@@ -74,8 +76,8 @@ class ReviewRunner:
 
     async def _review(self, request: RuntimeReviewRequest, metadata: ReviewRunMetadata, observer: ReviewObserver) -> ReviewReport:
         self._repo_tools.set_snapshot_ref(request.head)
-        diff = self._repo_tools.get_diff(request.base, request.head)
-        files = self._repo_tools.changed_files(request.base, request.head)
+        diff = redact(self._repo_tools.get_diff(request.base, request.head))
+        files = [redact(item["path"]) for item in self._repo_tools.changed_files(request.base, request.head)]
         metadata.diff_truncated = "[truncated to" in diff
         if not diff:
             metadata.completed_at = datetime.now(UTC)
@@ -108,8 +110,7 @@ class ReviewRunner:
 
     async def _run_reviewer(self, request, diff, files, metadata, observer) -> tuple[ReviewerResult, str]:
         prompt = _reviewer_prompt(request, diff, files)
-        result = await self._run_stage("reviewer", self._agents.reviewer, prompt, metadata, observer)
-        typed = _expect_output(result, ReviewerResult, "reviewer")
+        typed = await self._run_stage("reviewer", self._agents.reviewer, prompt, metadata, observer, ReviewerResult)
         return typed, typed.model_dump_json(indent=2)
 
     async def _run_specialists(self, request, diff, files, metadata, observer) -> list[ReviewerResult]:
@@ -122,7 +123,7 @@ class ReviewRunner:
                 self._record_stage(stage, metadata.run_id)
                 continue
             prompt = _reviewer_prompt(request, diff, files, role=name)
-            tasks.append((name, self._run_stage(name, agent, prompt, metadata, observer)))
+            tasks.append((name, self._run_stage(name, agent, prompt, metadata, observer, ReviewerResult)))
         if not tasks:
             return []
         raw_results = await asyncio.gather(*(task for _, task in tasks), return_exceptions=True)
@@ -131,7 +132,7 @@ class ReviewRunner:
             if isinstance(result, Exception):
                 observer.event("specialist.skipped_after_failure", specialist=name)
                 continue
-            typed = _expect_output(result, ReviewerResult, name)
+            typed = result
             results.append(
                 typed.model_copy(
                     update={"findings": [item.model_copy(update={"source_agent": name}) for item in typed.findings]}
@@ -146,47 +147,56 @@ class ReviewRunner:
             self._record_stage(stage, metadata.run_id)
             return VerifierResult(), "{}"
         prompt = _verifier_prompt(request, diff, candidates)
-        result = await self._run_stage("verifier", self._agents.verifier, prompt, metadata, observer)
-        typed = _expect_output(result, VerifierResult, "verifier")
+        typed = await self._run_stage("verifier", self._agents.verifier, prompt, metadata, observer, VerifierResult)
         return typed, typed.model_dump_json(indent=2)
 
     async def _run_summary(self, request, findings, reviewer, verifier, metadata, observer) -> SummaryResult:
         prompt = _summary_prompt(request, findings, reviewer, verifier)
         try:
-            result = await self._run_stage("summarizer", self._agents.summarizer, prompt, metadata, observer)
-            return _expect_output(result, SummaryResult, "summarizer")
+            return await self._run_stage("summarizer", self._agents.summarizer, prompt, metadata, observer, SummaryResult)
         except ProviderError:
             # Findings already passed verification; deterministic rendering remains safe.
             return SummaryResult(summary="Review completed with deterministic fallback formatting.")
 
-    async def _run_stage(self, name, agent, prompt, metadata, observer):
+    async def _run_stage(self, name, agent, prompt, metadata, observer, output_type=None):
         model = self._config.model_for_agent(name)
         started = time.perf_counter()
         tracing_enabled = self._config.observability.enable_agent_tracing and bool(os.getenv("OPENAI_API_KEY"))
-        try:
-            with observer.stage(name, model=model.name, provider=model.provider):
-                result = await Runner.run(
-                    agent,
-                    prompt,
-                    max_turns=self._config.review.max_agent_turns,
-                    run_config=RunConfig(
-                        tracing_disabled=not tracing_enabled,
-                        group_id=metadata.run_id,
-                        trace_metadata={"role": name},
-                    ),
-                )
-        except Exception as exc:
-            error_code = "MISSING_MODEL_CREDENTIALS" if "Missing credentials" in str(exc) else "PROVIDER_FAILED"
-            stage = ReviewStage(name=name, status=StageStatus.FAILED, model=model.name, provider=model.provider, duration_ms=_elapsed_ms(started), error_code=error_code)
-            metadata.stages.append(stage)
-            self._record_stage(stage, metadata.run_id)
-            if error_code == "MISSING_MODEL_CREDENTIALS":
-                raise ProviderError(error_code, f"{name} requires model provider credentials", retryable=False) from exc
-            raise ProviderError(error_code, f"{name} model stage failed", retryable=True) from exc
+        max_attempts = self._config.review.provider_retry_max_attempts
+        for attempt in range(1, max_attempts + 1):
+            try:
+                with observer.stage(name, model=model.name, provider=model.provider, attempt=attempt):
+                    result = await Runner.run(
+                        agent,
+                        prompt,
+                        max_turns=self._config.review.max_agent_turns,
+                        run_config=RunConfig(
+                            tracing_disabled=not tracing_enabled,
+                            group_id=metadata.run_id,
+                            trace_metadata={"role": name},
+                        ),
+                    )
+                    typed = _expect_output(result, output_type, name) if output_type else result
+                break
+            except Exception as exc:
+                retryable = _is_retryable_provider_error(exc)
+                if retryable and attempt < max_attempts:
+                    delay = _retry_delay(self._config.review.provider_retry_base_delay_seconds, self._config.review.provider_retry_max_delay_seconds, attempt)
+                    metadata.provider_retries += 1
+                    observer.event("stage.retrying", stage=name, attempt=attempt, delay_seconds=delay, error_type=type(exc).__name__)
+                    await asyncio.sleep(delay)
+                    continue
+                error_code = "MISSING_MODEL_CREDENTIALS" if "missing credentials" in str(exc).lower() else "PROVIDER_FAILED"
+                stage = ReviewStage(name=name, status=StageStatus.FAILED, model=model.name, provider=model.provider, duration_ms=_elapsed_ms(started), error_code=error_code)
+                metadata.stages.append(stage)
+                self._record_stage(stage, metadata.run_id)
+                if error_code == "MISSING_MODEL_CREDENTIALS":
+                    raise ProviderError(error_code, f"{name} requires model provider credentials", retryable=False) from exc
+                raise ProviderError(error_code, f"{name} model stage failed", retryable=retryable) from exc
         stage = ReviewStage(name=name, status=StageStatus.COMPLETED, model=model.name, provider=model.provider, duration_ms=_elapsed_ms(started))
         metadata.stages.append(stage)
         self._record_stage(stage, metadata.run_id)
-        return result
+        return typed
 
     def _record_stage(self, stage: ReviewStage, run_id: str) -> None:
         if self._store:
@@ -263,7 +273,7 @@ def _verifier_prompt(request, diff: str, candidates: list[ReviewFinding]) -> str
             f"Base ref: {request.base}",
             f"Head ref: {request.head}",
             "<CANDIDATES>",
-            json.dumps([item.model_dump(mode="json") for item in candidates]),
+            redact(json.dumps([item.model_dump(mode="json") for item in candidates])),
             "</CANDIDATES>",
             "<DIFF>",
             diff,
@@ -278,9 +288,9 @@ def _summary_prompt(request, findings, reviewer, verifier) -> str:
             "Prepare context for the final review. Do not invent findings.",
             f"Base ref: {request.base}",
             f"Head ref: {request.head}",
-            json.dumps([item.model_dump(mode="json") for item in findings]),
-            reviewer.summary,
-            verifier.summary,
+            redact(json.dumps([item.model_dump(mode="json") for item in findings])),
+            redact(reviewer.summary),
+            redact(verifier.summary),
         ]
     )
 
@@ -293,3 +303,27 @@ def _matches_any_path(files: list[str], patterns: list[str]) -> bool:
 
 def _elapsed_ms(started: float) -> int:
     return int((time.perf_counter() - started) * 1000)
+
+
+def _is_retryable_provider_error(exc: Exception) -> bool:
+    if isinstance(exc, ProviderError) and exc.code == "INVALID_MODEL_OUTPUT":
+        return True
+    message = str(exc).lower()
+    non_retryable_markers = (
+        "missing credentials",
+        "api key",
+        "authentication",
+        "unauthorized",
+        "forbidden",
+        "invalid model",
+        "unsupported",
+        "response_format",
+        "maxturns",
+        "max turns",
+    )
+    return not any(marker in message for marker in non_retryable_markers)
+
+
+def _retry_delay(base_delay: float, max_delay: float, attempt: int) -> float:
+    capped = min(max_delay, base_delay * (2 ** (attempt - 1)))
+    return round(capped * (0.5 + random.random() * 0.5), 3)
