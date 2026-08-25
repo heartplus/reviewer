@@ -78,6 +78,17 @@ github-reviewer review \
   --head e4f5a6b
 ```
 
+审查单个 commit 时，不需要手动寻找父提交：
+
+```bash
+github-reviewer review \
+  --repo /absolute/path/to/repository \
+  --commit e4f5a6b
+```
+
+`--commit` 会自动比较“该 commit 的父提交 -> 该 commit”；根提交会以空 Git tree 为基线。
+它不能与 `--base` 或 `--head` 同时使用。
+
 ## 5. 逐提交审查 Git 历史
 
 下面的命令按时间顺序审查 `origin/main..HEAD` 中的每个提交：

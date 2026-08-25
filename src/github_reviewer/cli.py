@@ -24,6 +24,7 @@ def review(
     repo: Path = typer.Option(..., help="Path to the local Git repository."),
     base: str | None = typer.Option(None, help="Base Git ref."),
     head: str | None = typer.Option(None, help="Head Git ref."),
+    commit: str | None = typer.Option(None, "--commit", help="Review one commit against its parent."),
     config: Path = typer.Option(Path("config/default.yaml"), help="Reviewer YAML configuration."),
     show_intermediate: bool = typer.Option(False, help="Print structured reviewer and verifier results."),
     verbose: bool = typer.Option(False, help="Show structured diagnostic events on stderr."),
@@ -33,11 +34,22 @@ def review(
         logging.basicConfig(level=logging.INFO)
     try:
         app_config = load_config(config)
-        request = RuntimeReviewRequest(
-            repo=repo,
-            base=base or app_config.review.base_ref,
-            head=head or app_config.review.head_ref,
-        )
+        if commit is not None and (base is not None or head is not None):
+            raise ConfigurationError("INVALID_ARGUMENTS", "--commit cannot be combined with --base or --head")
+        if commit is not None:
+            repo_tools = RepositoryTools(repo, app_config.review)
+            request = RuntimeReviewRequest(
+                repo=repo,
+                base=repo_tools.parent_commit(commit),
+                head=commit,
+                commit_sha=commit,
+            )
+        else:
+            request = RuntimeReviewRequest(
+                repo=repo,
+                base=base or app_config.review.base_ref,
+                head=head or app_config.review.head_ref,
+            )
         runner = create_review_runner(app_config, repo)
         report = asyncio.run(runner.review(request))
     except ConfigurationError as exc:

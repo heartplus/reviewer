@@ -16,6 +16,7 @@
 | 配置化模型选择 | 已满足 | YAML 可分别指定 Reviewer、Verifier、Summarizer 的 provider、模型和参数。 |
 | OpenAI-compatible 模型 | 已满足 | 默认配置可使用 DeepSeek Pro 和 Flash。 |
 | 单个范围审查 | 已满足 | `review --repo --base --head` 输出确定性的 Markdown 报告。 |
+| 单个提交审查 | 已满足 | `review --repo --commit <SHA>` 自动将该提交的父提交作为比较基线。 |
 | 逐提交历史审查 | 已满足 | `history --repo --base --head --limit` 不修改目标工作区。 |
 | 全量历史审查 | 已满足 | `history --all` 包含根提交，并以空 Git tree 作为其比较基线。 |
 | 三阶段验证 | 已满足 | Reviewer 发现、Verifier 裁定、Summarizer 组织结果；最终仅输出 confirmed finding。 |

@@ -20,6 +20,14 @@ github-reviewer review \
   --show-intermediate
 ```
 
+审查单个 commit：
+
+```bash
+github-reviewer review \
+  --repo /path/to/repository \
+  --commit e4f5a6b
+```
+
 ```bash
 github-reviewer history \
   --repo /path/to/repository \
@@ -33,6 +41,7 @@ github-reviewer history \
 | `--repo` | 是 | 无 | 目标 Git 工作区的绝对或相对路径。 |
 | `--base` | 否 | 配置中的 `review.base_ref` | 对比基准 ref。 |
 | `--head` | 否 | 配置中的 `review.head_ref` | 被审查的目标 ref。 |
+| `--commit` | 否 | 无 | 审查单个 commit；自动使用其父提交作为 base，且不能与 `--base`、`--head` 同时使用。 |
 | `--config` | 否 | `config/default.yaml` | YAML 配置文件路径。 |
 | `--show-intermediate` | 否 | `false` | 在最终报告前输出 Reviewer 和 Verifier 原始结果。 |
 
