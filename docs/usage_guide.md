@@ -21,6 +21,18 @@ pip install -e ".[dev]"
 
 工具需要 Git。启用仓库搜索时还需要 `rg`（ripgrep）。
 
+安装后推荐通过命令入口运行：
+
+```bash
+github-reviewer --help
+```
+
+也支持直接执行源码入口：
+
+```bash
+python3 ./src/github_reviewer/cli.py --help
+```
+
 ## 3. 配置模型
 
 复制环境变量模板并填入模型服务的 API Key：

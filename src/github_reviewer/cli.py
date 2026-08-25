@@ -2,7 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 from pathlib import Path
+
+# Direct execution makes this module's directory the first import location.
+# Put the package root first so `python src/github_reviewer/cli.py ...` resolves
+# the same modules as `python -m github_reviewer.cli ...`.
+if __name__ == "__main__" and __package__ is None:
+    script_dir = str(Path(__file__).resolve().parent)
+    while script_dir in sys.path:
+        sys.path.remove(script_dir)
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import typer
 from rich.console import Console

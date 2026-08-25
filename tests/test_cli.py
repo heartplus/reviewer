@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import subprocess
+import sys
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -190,3 +192,56 @@ def test_cli_maps_configuration_and_provider_failures(tmp_path: Path, monkeypatc
 
     assert provider_error.exit_code == 4
     assert "PROVIDER_FAILED" in provider_error.stderr
+
+
+def test_cli_script_entrypoint_resolves_package_imports() -> None:
+    completed = subprocess.run(
+        [sys.executable, "src/github_reviewer/cli.py", "--help"],
+        cwd=Path(__file__).parents[1],
+        text=True,
+        capture_output=True,
+        env={**os.environ, "PYTHONPATH": ""},
+        check=False,
+    )
+
+    assert completed.returncode == 0
+    assert "Review local Git changes" in completed.stdout
+
+
+def test_cli_script_entrypoint_uses_the_external_agents_sdk(tmp_path: Path) -> None:
+    _, head = _repository(tmp_path)
+    config_path = _write_config(tmp_path)
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "src/github_reviewer/cli.py",
+            "review",
+            "--repo",
+            str(tmp_path),
+            "--commit",
+            head,
+            "--config",
+            str(config_path),
+        ],
+        cwd=Path(__file__).parents[1],
+        text=True,
+        capture_output=True,
+        env={**os.environ, "PYTHONPATH": ""},
+        check=False,
+    )
+
+    assert "cannot import name 'Agent' from 'agents'" not in completed.stderr
+
+
+def test_agents_package_exports_do_not_create_an_import_cycle() -> None:
+    completed = subprocess.run(
+        [sys.executable, "-c", "from github_reviewer.agents.builder import build_review_agents; from github_reviewer.agents.runner import ReviewRunner; print('ok')"],
+        cwd=Path(__file__).parents[1],
+        text=True,
+        capture_output=True,
+        env={**os.environ, "PYTHONPATH": ""},
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == "ok"
