@@ -22,7 +22,8 @@ def load_config(path: str | Path) -> AppConfig:
         _load_nearby_env_file(config_path)
         with config_path.open("r", encoding="utf-8") as handle:
             raw = yaml.safe_load(handle) or {}
-        return AppConfig.model_validate(_expand_env(raw))
+        expanded = _expand_env(raw)
+        return AppConfig.model_validate(_resolve_instruction_paths(expanded, config_path.parent))
     except yaml.YAMLError as exc:
         raise ConfigurationError("INVALID_YAML", f"Cannot parse configuration: {config_path}") from exc
     except ValidationError as exc:
@@ -61,3 +62,27 @@ def _expand_env(value: Any, path: str = "config") -> Any:
 
         return _ENV_PATTERN.sub(replace, value)
     return value
+
+
+def _resolve_instruction_paths(raw: Any, config_dir: Path) -> Any:
+    """Resolve per-agent instruction paths relative to the YAML file."""
+    if not isinstance(raw, dict):
+        return raw
+
+    resolved = dict(raw)
+    for section in ("agents", "specialists"):
+        entries = resolved.get(section)
+        if not isinstance(entries, dict):
+            continue
+        copied_entries = dict(entries)
+        for role, settings in entries.items():
+            if not isinstance(settings, dict) or not isinstance(settings.get("instruction"), str):
+                continue
+            copied_settings = dict(settings)
+            instruction = Path(copied_settings["instruction"]).expanduser()
+            if not instruction.is_absolute():
+                instruction = config_dir / instruction
+            copied_settings["instruction"] = instruction.resolve()
+            copied_entries[role] = copied_settings
+        resolved[section] = copied_entries
+    return resolved

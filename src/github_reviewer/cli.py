@@ -34,7 +34,7 @@ def review(
     repo: Path = typer.Option(..., help="Path to the local Git repository."),
     base: str | None = typer.Option(None, help="Base Git ref."),
     head: str | None = typer.Option(None, help="Head Git ref."),
-    commit: str | None = typer.Option(None, "--commit", help="Review one commit against its parent."),
+    commit: list[str] = typer.Option([], "--commit", help="One commit, or repeat twice for base then head."),
     config: Path = typer.Option(Path("config/default.yaml"), help="Reviewer YAML configuration."),
     show_intermediate: bool = typer.Option(False, help="Print structured reviewer and verifier results."),
     verbose: bool = typer.Option(False, help="Show structured diagnostic events on stderr."),
@@ -44,15 +44,24 @@ def review(
         logging.basicConfig(level=logging.INFO)
     try:
         app_config = load_config(config)
-        if commit is not None and (base is not None or head is not None):
+        if commit and (base is not None or head is not None):
             raise ConfigurationError("INVALID_ARGUMENTS", "--commit cannot be combined with --base or --head")
-        if commit is not None:
+        if len(commit) > 2:
+            raise ConfigurationError("INVALID_ARGUMENTS", "--commit accepts one commit, or exactly two commits")
+        if len(commit) == 1:
             repo_tools = RepositoryTools(repo, app_config.review)
             request = RuntimeReviewRequest(
                 repo=repo,
-                base=repo_tools.parent_commit(commit),
-                head=commit,
-                commit_sha=commit,
+                base=repo_tools.parent_commit(commit[0]),
+                head=commit[0],
+                commit_sha=commit[0],
+            )
+        elif len(commit) == 2:
+            request = RuntimeReviewRequest(
+                repo=repo,
+                base=commit[0],
+                head=commit[1],
+                commit_sha=commit[1],
             )
         else:
             request = RuntimeReviewRequest(

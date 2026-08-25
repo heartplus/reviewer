@@ -33,6 +33,7 @@ agents:
     model: verifier
   summarizer:
     model: summarizer
+    instruction: ../instructions/summarizer.md
 
 models:
   reviewer:
@@ -45,6 +46,12 @@ models:
     provider: openai
     name: gpt-5.6-luna
 ```
+
+Each agent role reads its behavior instruction from an editable Markdown file. The default
+Chinese-first files are in [`instructions/`](instructions/): `reviewer.md`, `verifier.md`,
+`summarizer.md`, the specialist template `specialist.md`, and `no_repo_tools.md` for
+tool-disabled runs. Configure another file with `agents.<role>.instruction`; relative paths
+are resolved from the YAML configuration file.
 
 Run against a local checkout:
 

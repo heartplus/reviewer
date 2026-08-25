@@ -34,6 +34,10 @@
 
 ## 4. Agent 指令要求
 
+角色指令从 `instructions/*.md` 文件加载，不在 Python 代码中定义。`agents.<role>.instruction`
+可覆盖默认文件，相对路径相对 YAML 配置文件；具体加载与校验规则见
+[`02_configuration_and_model_selection.md`](02_configuration_and_model_selection.md)。
+
 Reviewer 指令必须强调：正确性、安全、数据损失、并发、API 契约和用户可见行为；忽略纯格式问题；每项 finding 说明触发条件与影响。
 
 Verifier 指令必须强调：寻找反例；验证行号、调用路径和现有保护条件；明确输出确认、驳回或证据不足的结论。

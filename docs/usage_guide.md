@@ -59,7 +59,33 @@ cp .env.example .env
 export DEEPSEEK_API_KEY='your-api-key'
 ```
 
-## 4. 审查一个范围
+## 4. 自定义角色指令
+
+角色指令是可直接编辑的 Markdown 文件，不再写在 Python 代码中。默认文件在仓库根目录的
+[`instructions/`](../instructions/)：
+
+- `reviewer.md`：发现候选问题。
+- `verifier.md`：核验证据并过滤误报。
+- `summarizer.md`：整理残余风险和测试缺口。
+- `specialist.md`：专项审查 Agent 的共享模板，`{{specialist_name}}` 会自动替换为专项名称。
+- `no_repo_tools.md`：未启用仓库工具时自动追加的运行条件。
+
+默认配置已显式指定前三个文件：
+
+```yaml
+agents:
+  reviewer:
+    instruction: ../instructions/reviewer.md
+  verifier:
+    instruction: ../instructions/verifier.md
+  summarizer:
+    instruction: ../instructions/summarizer.md
+```
+
+`instruction` 可以替换为团队自己的文件；相对路径以 YAML 配置文件所在目录为准。省略该字段时，
+核心角色使用同名默认文件，专项角色使用 `instructions/specialist.md`。文件不存在、不可读或为空会在启动时明确报错。
+
+## 5. 审查一个范围
 
 下面的命令审查 `origin/main` 到当前 `HEAD` 的全部变更：
 
@@ -99,9 +125,19 @@ github-reviewer review \
 ```
 
 `--commit` 会自动比较“该 commit 的父提交 -> 该 commit”；根提交会以空 Git tree 为基线。
-它不能与 `--base` 或 `--head` 同时使用。
 
-## 5. 逐提交审查 Git 历史
+审查两个指定 commit 之间的整体差异时，重复传入 `--commit`，第一个为 base，第二个为 head：
+
+```bash
+github-reviewer review \
+  --repo /absolute/path/to/repository \
+  --commit a1b2c3d \
+  --commit e4f5a6b
+```
+
+`--commit` 最多传入两次，且不能与 `--base` 或 `--head` 同时使用。
+
+## 6. 逐提交审查 Git 历史
 
 下面的命令按时间顺序审查 `origin/main..HEAD` 中的每个提交：
 
@@ -140,7 +176,7 @@ github-reviewer history \
 
 根提交会与一个空 Git tree 比较，因此也会得到独立报告。`--all` 会忽略 `--base`。
 
-## 6. 保存报告
+## 7. 保存报告
 
 报告写到标准输出，诊断日志写到标准错误。保存报告时只重定向标准输出：
 
@@ -159,7 +195,7 @@ github-reviewer history \
 github-reviewer review --repo /absolute/path/to/repository --base origin/main --head HEAD > review.md
 ```
 
-## 7. 配置中的关键限制
+## 8. 配置中的关键限制
 
 `config/default.yaml` 的 `review` 区域控制输入规模与工具行为：
 
@@ -177,7 +213,7 @@ github-reviewer review --repo /absolute/path/to/repository --base origin/main --
 `agents.verifier.use_repo_tools` 设为 `false`，即只基于传入的 diff 审查。这是为了避免
 兼容模型在工具循环中反复调用。若所用模型的工具调用稳定，可改为 `true` 以读取更多上下文。
 
-## 8. 退出码与排查
+## 9. 退出码与排查
 
 | 退出码 | 含义 | 常见处理方式 |
 | --- | --- | --- |
@@ -194,7 +230,7 @@ github-reviewer review --repo /absolute/path/to/repository --base origin/main --
 - 模型凭证缺失：确认 `.env` 位于项目根目录，或已在当前终端导出对应变量。
 - 报告缺少上下文：适当提高 `max_diff_bytes`，或对支持工具调用的模型开启 `use_repo_tools`。
 
-## 9. 执行前检查
+## 10. 执行前检查
 
 ```bash
 git -C /absolute/path/to/repository status --short

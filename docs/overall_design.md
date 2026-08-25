@@ -19,6 +19,7 @@
 - 避免输出纯风格类意见和缺少依据的猜测。
 - 支持不同 Agent 角色使用不同模型。
 - 模型选择必须通过 YAML 配置完成，避免在 Agent 代码中硬编码模型名称。
+- 每个 Agent 的行为指令必须来自可编辑的文本文件；配置可为角色指定文件路径，避免在 Agent 代码中硬编码提示词。
 - 支持一次审查一个 `base...head` 范围，以及逐提交审查 `base..head` 历史范围。
 
 ## 3. 非目标
@@ -229,6 +230,8 @@ src/github_reviewer/
     model_factory.py 根据配置构造 SDK 模型对象。
     builder.py       创建 reviewer、verifier、summarizer agents。
     runner.py        执行分阶段 review 流程。
+
+  instructions/      可编辑的角色指令文件（中文为主）。
 
   tools/
     repo.py          仓库检查和命令执行工具。

@@ -30,6 +30,8 @@ models:
 ```
 
 每个专项 Agent 可指定模型、适用路径、最大上下文和 severity 范围。未匹配变更路径时不运行，以控制成本。
+专项 Agent 也可通过 `instruction` 指定独立 Markdown 文件；省略时使用 `instructions/specialist.md`，其中的
+`{{specialist_name}}` 会替换为当前专项名称。
 
 ## 3. 编排方式
 

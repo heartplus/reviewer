@@ -23,11 +23,14 @@ agents:
   reviewer:
     model: deepseek_pro
     use_repo_tools: false
+    instruction: ../instructions/reviewer.md
   verifier:
     model: deepseek_pro
     use_repo_tools: false
+    instruction: ../instructions/verifier.md
   summarizer:
     model: deepseek_flash
+    instruction: ../instructions/summarizer.md
 
 models:
   deepseek_pro:

@@ -97,12 +97,46 @@ def test_review_cli_accepts_commit_and_resolves_its_parent(tmp_path: Path, monke
     assert calls[0].commit_sha == head
 
 
+def test_review_cli_accepts_two_commits_as_an_explicit_range(tmp_path: Path, monkeypatch) -> None:
+    base, head = _repository(tmp_path)
+    config_path = _write_config(tmp_path)
+    calls = []
+
+    class FakeRunner:
+        async def review(self, request):
+            calls.append(request)
+            return ReviewReport(request=request, final_output="## Code Review\n\nDone.\n")
+
+    monkeypatch.setattr(cli, "create_review_runner", lambda config, repo: FakeRunner())
+    result = CliRunner().invoke(
+        cli.app,
+        ["review", "--repo", str(tmp_path), "--commit", base, "--commit", head, "--config", str(config_path)],
+    )
+
+    assert result.exit_code == 0
+    assert calls[0].base == base
+    assert calls[0].head == head
+    assert calls[0].commit_sha == head
+
+
 def test_review_cli_rejects_commit_combined_with_range_arguments(tmp_path: Path) -> None:
     config_path = _write_config(tmp_path)
 
     result = CliRunner().invoke(
         cli.app,
         ["review", "--repo", str(tmp_path), "--commit", "HEAD", "--base", "HEAD", "--config", str(config_path)],
+    )
+
+    assert result.exit_code == 2
+    assert "INVALID_ARGUMENTS" in result.stderr
+
+
+def test_review_cli_rejects_more_than_two_commits(tmp_path: Path) -> None:
+    config_path = _write_config(tmp_path)
+
+    result = CliRunner().invoke(
+        cli.app,
+        ["review", "--repo", str(tmp_path), "--commit", "one", "--commit", "two", "--commit", "three", "--config", str(config_path)],
     )
 
     assert result.exit_code == 2

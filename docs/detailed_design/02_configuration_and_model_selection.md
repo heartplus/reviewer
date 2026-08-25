@@ -17,10 +17,13 @@ review:
 agents:
   reviewer:
     model: reviewer
+    instruction: ../instructions/reviewer.md
   verifier:
     model: verifier
+    instruction: ../instructions/verifier.md
   summarizer:
     model: summarizer
+    instruction: ../instructions/summarizer.md
 
 models:
   reviewer:
@@ -45,7 +48,7 @@ models:
 
 - `ModelSettingsConfig`：`temperature`、`max_tokens`、`reasoning_effort` 等模型参数。
 - `ModelConfig`：`provider`、`name`、`base_url`、`api_key_env`、`supports_structured_output`、`settings`。
-- `AgentConfig`：单个角色引用的逻辑模型名，以及是否暴露仓库工具的 `use_repo_tools` 开关。
+- `AgentConfig`：单个角色引用的逻辑模型名、是否暴露仓库工具的 `use_repo_tools` 开关，以及可选的 `instruction` 指令文件路径。
 - `ReviewConfig`：工具输出上限、默认 refs、测试命令 allowlist、Provider 重试次数与退避参数。
 - `AppConfig`：顶层聚合配置，并提供 `model_for_agent(role)` 查询方法。
 
@@ -59,11 +62,26 @@ models:
 
 1. 读取 YAML 为原始字典。
 2. 递归展开字符串中的 `${VARIABLE}`，只允许读取当前进程环境变量。
-3. 将结果传入 `AppConfig` 校验并返回类型化对象。
+3. 将 `agents.*.instruction` 和 `specialists.*.instruction` 的相对路径按 YAML 所在目录解析。
+4. 将结果传入 `AppConfig` 校验并返回类型化对象。
 
 缺失的环境变量必须直接失败，并在报错中指出配置路径与变量名；不得打印变量值。`.env` 仅作为开发时由调用方加载的便利文件，生产环境应使用部署平台注入的环境变量。
 
-## 5. Model Factory
+## 5. 角色指令文件
+
+角色行为指令不写在 Python 代码中。默认指令位于仓库根目录的 `instructions/`：
+
+| 文件 | 用途 |
+| --- | --- |
+| `reviewer.md` | 发现候选问题的通用代码审查指令。 |
+| `verifier.md` | 复核候选问题、过滤误报的指令。 |
+| `summarizer.md` | 汇总残余风险与测试缺口的指令。 |
+| `specialist.md` | 专项 Agent 共用模板，其中 `{{specialist_name}}` 会在运行时替换。 |
+| `no_repo_tools.md` | 当前角色未启用仓库工具时追加的运行条件指令。 |
+
+`instruction` 省略时，核心角色会使用对应默认文件，专项角色使用 `specialist.md`。文件不存在、不可读或为空时必须在创建 Agent 前报配置错误。默认文本以中文为主，保留 JSON、finding、tool 等必要术语；用户可复制或直接修改这些文件以适配团队规范。
+
+## 6. Model Factory
 
 `agents/model_factory.py` 根据 `ModelConfig.provider` 构造 SDK 所需的模型对象：
 
@@ -75,16 +93,17 @@ models:
 
 `build_model_settings()` 只映射 SDK 已支持的设置。供应商不支持的参数由配置校验或运行时适配层明确报错，不能悄悄丢弃。
 
-## 6. 密钥处理
+## 7. 密钥处理
 
 - `api_key_env` 保存环境变量名称，绝不保存真实密钥。
 - 未设置 `api_key_env` 时，`openai` 使用 SDK 默认的凭证查找机制。
 - 自定义 provider 的 endpoint 必须为 HTTPS，开发环境例外需显式配置。
 - 日志、异常和 tracing 属性不得出现 API Key 或 Authorization header。
 
-## 7. 测试与验收
+## 8. 测试与验收
 
 - 校验角色引用不存在的模型、未知 provider、非法 `reasoning_effort` 时失败。
 - 验证环境变量可在嵌套字段内展开，缺失变量会失败且不泄露值。
 - 用 mock 分别验证三种 provider 的模型构造和 settings 映射。
 - 验证更换 YAML 中的模型名称后，无需修改 Python 代码即可生效。
+- 验证角色指令文件可独立修改，且相对路径相对 YAML 文件正确解析。

@@ -59,6 +59,7 @@ class ModelConfig(StrictModel):
 class AgentConfig(StrictModel):
     model: str = Field(min_length=1)
     use_repo_tools: bool = True
+    instruction: Path | None = None
 
 
 class SpecialistAgentConfig(AgentConfig):
